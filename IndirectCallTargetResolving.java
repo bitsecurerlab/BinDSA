@@ -694,7 +694,9 @@ public class IndirectCallTargetResolving extends GhidraScript {
 
 				if (fp != null) {
 					count += 1;
-					fpstr += fp.getName() + ", ";
+					long base = currentProgram.getImageBase().getOffset();
+					long pc = fp.getEntryPoint().getOffset() - base;
+					fpstr += String.format("0x%x", pc) + ", ";
 					Instruction instr = currentProgram.getListing().getInstructionAt(pcodeOp.getSeqnum().getTarget());
 					if (instr == null)
 						continue;
