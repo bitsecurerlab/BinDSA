@@ -19,6 +19,7 @@ public class Graph {
 	private HashMap<Varnode, Pair<Varnode, Integer>> varRelation = new HashMap<Varnode, Pair<Varnode, Integer>>();
 	private HashMap<Address, CallSiteNode> callNodes = new HashMap<Address, CallSiteNode>();
 	private HashMap<Address, HashSet<CallSiteNode>> callNodesTemp = new HashMap<Address, HashSet<CallSiteNode>>();
+	private HashMap<PcodeOp, Cell> pcodeOutputCells = new HashMap<PcodeOp, Cell>();
 	private ArrayList<Varnode> args = new ArrayList<Varnode>();
 	private HashSet<Varnode> ret = new HashSet<Varnode>();
 	public HashMap<Function, CallSiteNode> funcArgMap = new HashMap<Function, CallSiteNode>();
@@ -56,6 +57,15 @@ public class Graph {
 
 	public void setMapping(HashMap<PcodeOp, ArrayList<ClangToken>> m) {
 		mapping = m;
+	}
+
+	public void setPcodeOutputCell(PcodeOp op, Cell cell) {
+		if (op != null && cell != null)
+			pcodeOutputCells.put(op, cell);
+	}
+
+	public Cell getPcodeOutputCell(PcodeOp op) {
+		return pcodeOutputCells.get(op);
 	}
 
 	public void addRet(Varnode v) {

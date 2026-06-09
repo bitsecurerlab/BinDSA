@@ -391,6 +391,48 @@ public class IndirectCallTargetResolving extends GhidraScript {
 
 	}
 
+	public void reanalyzeGraph(Function f, Graph graph) {
+		DecompileResults dRes = decompileFunction(f);
+		HighFunction hfunction = dRes.getHighFunction();
+		if (hfunction == null || graph == null)
+			return;
+
+		ClangTokenGroup ccode = dRes.getCCodeMarkup();
+		HashMap<PcodeOp, ArrayList<ClangToken>> mapping = mapPcodeOpToClangTokenList(ccode);
+		graph.setMapping(mapping);
+
+		ArrayList<PcodeBlockBasic> bb = hfunction.getBasicBlocks();
+		if (bb.size() == 0) {
+			graph.setMapping(null);
+			return;
+		}
+
+		Queue<PcodeBlockBasic> workList = new LinkedList<>();
+		workList.addAll(bb);
+		int it = 0;
+		while (!workList.isEmpty() && !monitor.isCancelled()) {
+			boolean stateChanged = false;
+			PcodeBlockBasic pBB = workList.remove();
+			it++;
+			if (it / bb.size() > 4)
+				break;
+
+			Iterator<PcodeOp> opIter = pBB.getIterator();
+			while (opIter.hasNext()) {
+				stateChanged = analyzePcodeOp(opIter.next(), graph) || stateChanged;
+			}
+
+			if (stateChanged) {
+				int neighbours = pBB.getOutSize();
+				for (int i = 0; i < neighbours; i++) {
+					if (!workList.contains(pBB.getOut(i)))
+						workList.add((PcodeBlockBasic) pBB.getOut(i));
+				}
+			}
+		}
+		graph.setMapping(null);
+	}
+
 	public int parseInt(String symbol) {
 		int ret;
 		if (symbol == "VZERO") {
@@ -477,6 +519,13 @@ public class IndirectCallTargetResolving extends GhidraScript {
 			graph.setRelation(pcodeOp.getOutput(), newVarRelation);
 			Cell c1 = graph.getCell(pcodeOp.getInput(0));
 			Cell c2 = graph.getCell(pcodeOp.getOutput());
+			graph.setPcodeOutputCell(pcodeOp, c2);
+			if (pcodeOp.getOutput() != null && pcodeOp.getOutput().getAddress().isStackAddress()
+					&& (c1.getOutEdges() != null || !c1.getPossiblePointers().isEmpty())) {
+				long rawOffset = pcodeOp.getOutput().getAddress().getOffset();
+				Cell stackCell = graph.getOrCreateFromStack(rawOffset, pcodeOp.getSeqnum().getTarget());
+				stackCell.addOutEdges(c1);
+			}
 			if (propagateTaint && c2.hasTaintedInEdge())
 				System.err.println("Vul found at offset " + pcodeOp.getSeqnum().getTarget().toString() + " in "
 						+ currentProgram.getExecutablePath());
@@ -490,9 +539,27 @@ public class IndirectCallTargetResolving extends GhidraScript {
 				out.addInEvEdges(pcodeOp.getOutput());
 				graph.setEv(pcodeOp.getOutput(), out);
 			} else {
-				out = graph.getCell(pcodeOp.getOutput());
-				mem.addOutEdges(out);
+				HashSet<Address> ptrs = new HashSet<Address>();
+				ptrs.addAll(mem.getPossiblePointers());
+				for (Address ptr : ptrs) {
+					Cell origin = graph.getAllGlobals().findPtr(ptr);
+					if (origin == null)
+						continue;
+					if (out == null)
+						out = origin;
+					else
+						out = out.merge(origin);
+				}
+				if (out != null) {
+					out.addInEvEdges(pcodeOp.getOutput());
+					graph.setEv(pcodeOp.getOutput(), out);
+					mem.addOutEdges(out);
+				} else {
+					out = graph.getCell(pcodeOp.getOutput());
+					mem.addOutEdges(out);
+				}
 			}
+			graph.setPcodeOutputCell(pcodeOp, out);
 			mem = graph.getCell(pcodeOp.getInput(1));
 			mem.setReadFunc(graph.getF());
 			mem.addMemAccessInstr(pcodeOp.getSeqnum().getTarget());
@@ -536,7 +603,8 @@ public class IndirectCallTargetResolving extends GhidraScript {
 			if (fp != null
 					&& (fp.getName().equals("<EXTERNAL>::malloc") || fp.getName().equals("<EXTERNAL>::calloc")
 							|| fp.getName().equals("<EXTERNAL>::realloc") || fp.getName().equals("malloc")
-							|| fp.getName().equals("calloc") || fp.getName().equals("realloc"))
+							|| fp.getName().equals("calloc") || fp.getName().equals("realloc")
+							|| fp.getName().equals("operator.new"))
 					&& pcodeOp.getOutput() != null) {
 				out = graph.getCell(pcodeOp.getOutput());
 				if (fp.getName().contains("malloc") && pcodeOp.getInput(1) != null
@@ -594,6 +662,15 @@ public class IndirectCallTargetResolving extends GhidraScript {
 			}
 
 			func = graph.getCell(pcodeOp.getInput(0));
+			PcodeOp targetDef = pcodeOp.getInput(0).getDef();
+			Cell defCell = graph.getPcodeOutputCell(targetDef);
+			if (defCell != null) {
+				if (defCell.getOutEdges() != null
+						&& getPossibleFuncPointer(defCell.getOutEdges().getPossiblePointers(), currentProgram).size() > 0)
+					func = defCell.getOutEdges();
+				else if (getPossibleFuncPointer(defCell.getPossiblePointers(), currentProgram).size() > 0)
+					func = defCell;
+			}
 			graph.hasIndirectCallee = true;
 			if (propagateTaint && func.isTainted())
 				System.err.println("Vul found at offset " + pcodeOp.getSeqnum().getTarget().toString() + " in "
@@ -963,6 +1040,11 @@ public class IndirectCallTargetResolving extends GhidraScript {
 				outCell = graph.getCell(onode);
 				if (outCell.getParent() != null) outCell.getParent().setArray(true);
 				if (cell1.getParent() != null) cell1.getParent().setArray(true);
+				if (cell1.getOutEdges() != null && cell1.getOutEdges().getParent() != null) {
+					cell1.getOutEdges().getParent().setArray(true);
+					cell1.getOutEdges().getParent().collapse(false);
+					outCell.setOutEdges(cell1.getOutEdges().getParent().getOrCreateCell(0));
+				}
 			}
 
 			if (cell3.getParent() != null && cell3.getParent().getConstants() != null) {
@@ -1076,6 +1158,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 							continue;
 						}
 						resolveCallee(g, fp, cs);
+						reanalyzeGraph(f, g);
 						cs.addResolved(funcAddr);
 						cs.setResolved(true);
 
@@ -1137,6 +1220,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 						// clone callee to the scc graph
 						Graph callee = allBUGraphs.get(fp);
 						sccgraph.cloneGraphIntoThis(callee, fp, cs, isomorphism);
+						reanalyzeGraph(sccgraph.getF(), sccgraph);
 						cs.setResolved(true);
 
 						// add the callee's unresolved callsite into queue

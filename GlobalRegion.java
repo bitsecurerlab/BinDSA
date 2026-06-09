@@ -69,15 +69,13 @@ public class GlobalRegion extends Graph{
 	 */
 	private void initRegionPtr() {
 		SymbolTable symtab = currentProgram.getSymbolTable();
-		MemoryBlock mem = currentProgram.getMemory().getBlock(".data");
-		MemoryBlock romem = currentProgram.getMemory().getBlock(".rodata");
-		MemoryBlock bssmem = currentProgram.getMemory().getBlock(".bss");
         SymbolIterator symiter = symtab.getAllSymbols(true);
         
         while (symiter.hasNext()) {
         	Symbol sym = symiter.next();
             Address addr = sym.getAddress();
-            if (!mem.contains(addr) && !bssmem.contains(addr) && !romem.contains(addr))
+            MemoryBlock block = currentProgram.getMemory().getBlock(addr);
+            if (block == null || !block.isLoaded() || !block.isInitialized() || block.isExecute())
                 continue;
             Data data = this.currentProgram.getListing().getDataAt(addr);
             if (data == null)

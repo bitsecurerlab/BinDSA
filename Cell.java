@@ -379,7 +379,16 @@ public class Cell {
 			Cell outCell2 = cell2.getOutEdges();
 			Cell outCell1 = mergedCell.getOutEdges();
 			if (outCell2 != null) {
-				outCell2.mergeContent(outCell1, visitedDSNode, visiteddfs);
+				boolean existingIsEmptyConstant = outCell2.getParent() != null && outCell2.getParent().getIsConstant()
+						&& outCell2.getPossiblePointers().isEmpty() && outCell2.getOutEdges() == null;
+				boolean incomingHasPointerInfo = outCell1 != null
+						&& (!outCell1.getPossiblePointers().isEmpty() || outCell1.getOutEdges() != null);
+				if (existingIsEmptyConstant && incomingHasPointerInfo) {
+					outCell2.addAllPointers(outCell1.getPossiblePointers());
+					if (outCell1.getOutEdges() != null)
+						outCell2.addOutEdges(outCell1.getOutEdges());
+				} else
+					outCell2.mergeContent(outCell1, visitedDSNode, visiteddfs);
 			} else if (outCell1 != null)
 				cell2.setOutEdges(outCell1);
 			if (outCell1 != null)
@@ -903,4 +912,3 @@ public class Cell {
 	}
 
 }
-
