@@ -22,6 +22,7 @@ public class Graph {
 	private HashMap<PcodeOp, Cell> pcodeOutputCells = new HashMap<PcodeOp, Cell>();
 	private ArrayList<Varnode> args = new ArrayList<Varnode>();
 	private HashSet<Varnode> ret = new HashSet<Varnode>();
+	private HashSet<Cell> heapAllocCells = new HashSet<Cell>();
 	public HashMap<Function, CallSiteNode> funcArgMap = new HashMap<Function, CallSiteNode>();
 	public HashMap<Integer, Cell> stackObj = new HashMap<Integer, Cell>();
 	private Function f;
@@ -82,6 +83,30 @@ public class Graph {
 			merged = c.merge(merged);
 		}
 		return merged;
+	}
+
+	public void addHeapAllocCell(Cell c) {
+		if (c != null && c.getParent() != null)
+			heapAllocCells.add(c);
+	}
+
+	private static boolean isUsefulReturnCell(Cell c) {
+		if (c == null || c.getParent() == null)
+			return false;
+		DSNode node = c.getParent();
+		return node.getOnHeap() || node.getIsArg() || node.getMembers().size() > 1;
+	}
+
+	private Cell getFallbackReturnCell() {
+		Cell merged = new Cell(new DSNode(), 0);
+		boolean hasCandidate = false;
+		for (Cell c : heapAllocCells) {
+			if (!isUsefulReturnCell(c))
+				continue;
+			merged = c.merge(merged);
+			hasCandidate = true;
+		}
+		return hasCandidate ? merged : null;
 	}
 
 	public ArrayList<Cell> getArgCell() {
@@ -394,12 +419,17 @@ public class Graph {
 			argFormal = callee.getArgCell();
 			retCell = callee.getReturnCell();
 		}
+		if (!isUsefulReturnCell(retCell) && cs.getReturn() != null) {
+			Cell fallbackRet = callee.getFallbackReturnCell();
+			if (fallbackRet != null)
+				retCell = fallbackRet;
+		}
 
 		// check arity and types
 		int actualsize = 0;
 		if (cs.getMembers().containsKey(0))
 			actualsize = -1;
-		if (argFormal.size() > actualsize + cs.getMembers().size() - 1) {
+		if (cs.isIndirect && argFormal.size() > actualsize + cs.getMembers().size() - 1) {
 			cs.getFunc().possiblePointers.remove(callee.getF().getEntryPoint());
 			return;
 		}
@@ -437,7 +467,7 @@ public class Graph {
 		if (retCell != null) {
 			DSNode retNode = retCell.getParent();
 			int offset = retCell.getFieldOffset();
-			if (retNode != null && (retNode.getOnHeap() || retNode.getIsArg() || retNode.getMembers().size() > 1)) {
+			if (isUsefulReturnCell(retCell)) {
 				Cell formalArgCell;
 				if (this != callee) {
 					DSNode copiedRetNode = retNode.deepCopy(isomorphism, this, cs, true);

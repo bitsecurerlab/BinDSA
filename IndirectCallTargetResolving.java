@@ -623,6 +623,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 				out.getParent().setOnHeap(true);
 				out.getParent().addLocations(
 						new Pair<String, Long>("H_" + pcodeOp.getSeqnum().getTarget().toString(), (long) 0));
+				graph.addHeapAllocCell(out);
 				break;
 			}
 			if (fp != null && fp.getName().contains("memcpy") && pcodeOp.getInputs().length >= 3) {
