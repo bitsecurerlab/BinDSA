@@ -134,7 +134,60 @@ public class GlobalRegion extends Graph{
 				return regionStart.getOrCreateCell((int) s.subtract(start));
 			}
 		}
-		return null;
+		return loadPointerSlot(s);
+	}
+
+	private Cell loadPointerSlot(Address s) {
+		MemoryBlock block = currentProgram.getMemory().getBlock(s);
+		if (block == null || !block.isLoaded() || !block.isInitialized() || block.isExecute())
+			return null;
+		if (regionPtrMap.containsKey(s))
+			return regionPtrMap.get(s);
+
+		int ptrSize = currentProgram.getDefaultPointerSize();
+		byte[] memcont = new byte[ptrSize];
+		try {
+			if (currentProgram.getMemory().getBytes(s, memcont) != ptrSize)
+				return null;
+		} catch (MemoryAccessException e) {
+			return null;
+		}
+
+		String hex = bytesToHex(memcont);
+		Address newAddr = currentProgram.getAddressFactory().getAddress(
+				currentProgram.getAddressFactory().getAddressSpace("ram").getSpaceID(),
+				new BigInteger(hex, 16).longValue());
+		if (newAddr == null)
+			return null;
+
+		Instruction instr = currentProgram.getListing().getInstructionAt(newAddr);
+		boolean isGlobalData = currentProgram.getListing().getDataAt(newAddr) != null
+				&& currentProgram.getMemory().getBlock(newAddr) != null
+				&& !currentProgram.getMemory().getBlock(newAddr).isExecute();
+		if (instr == null && !isGlobalData)
+			return null;
+
+		DSNode baseNode = new DSNode(s, this);
+		Cell baseCell = new Cell(baseNode, 0);
+		Cell out = new Cell(new DSNode(s, this), 0);
+		baseCell.setOutEdges(out);
+		out.getParent().setGlobal(true, s);
+		if (instr != null) {
+			IndirectCallTargetResolving.isFuncPointer(newAddr, currentProgram);
+			out.addPointers(newAddr);
+		} else {
+			HashSet<Address> visited = new HashSet<Address>();
+			if (loadGlobalVariableToMem(newAddr, out, visited)) {
+				out.addPointers(newAddr);
+				out.getParent().addLocations(new Pair<String, Long>("G", newAddr.getOffset()));
+			}
+		}
+		baseCell.addPointers(s);
+		baseNode.addLocations(new Pair<String, Long>("G", s.getOffset()));
+		baseCell.getGlobalAddrs().add(s);
+		regionPtrMap.put(s, baseCell);
+		regionSize.put(s, ptrSize);
+		return baseCell;
 	}
 	
 	public Cell getGlobalMem(Address s) {
