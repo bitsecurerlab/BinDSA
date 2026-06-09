@@ -469,9 +469,7 @@ public class Cell {
 									int as = currProg.getAddressFactory().getAddressSpace("ram").getSpaceID();
 									address = currProg.getAddressFactory().getAddress(as, address.getOffset());
 									Function fp = currProg.getFunctionManager().getFunctionAt(address);
-									long base = currProg.getImageBase().getOffset();
-									long pc = fp.getEntryPoint().getOffset() - base;
-									fpstr += String.format("0x%x", pc) + ", ";
+									fpstr += String.format("0x%x", fp.getEntryPoint().getOffset()) + ", ";
 									instr.addOperandReference(0, address, RefType.COMPUTED_CALL,
 											SourceType.USER_DEFINED);
 								}
@@ -531,9 +529,7 @@ public class Cell {
 										int as = currProg.getAddressFactory().getAddressSpace("ram").getSpaceID();
 										address = currProg.getAddressFactory().getAddress(as, address.getOffset());
 										Function fp = currProg.getFunctionManager().getFunctionAt(address);
-										long base = currProg.getImageBase().getOffset();
-										long pc = fp.getEntryPoint().getOffset() - base;
-										fpstr += String.format("0x%x", pc) + ", ";
+										fpstr += String.format("0x%x", fp.getEntryPoint().getOffset()) + ", ";
 										instr.addOperandReference(0, address, RefType.COMPUTED_CALL,
 												SourceType.USER_DEFINED);
 									}
@@ -807,9 +803,7 @@ public class Cell {
 								int as = currProg.getAddressFactory().getAddressSpace("ram").getSpaceID();
 								address = currProg.getAddressFactory().getAddress(as, address.getOffset());
 								Function func = currProg.getFunctionManager().getFunctionAt(address);
-								long base = currProg.getImageBase().getOffset();
-                                long pc = func.getEntryPoint().getOffset() - base;
-                                fpstr += String.format("0x%x", pc) + ", ";
+                                fpstr += String.format("0x%x", func.getEntryPoint().getOffset()) + ", ";
 								instr.addOperandReference(0, address, RefType.COMPUTED_CALL, SourceType.USER_DEFINED);
 							}
 						}
