@@ -86,7 +86,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 
 	public HashSet<Address> indirectCallSiteAddrs = new HashSet<Address>();
 	public static String targetPath = System.getProperty("user.home") + "/spec2006x86/O2_g3_out/targets.txt";
-	public static String outPath = System.getProperty("user.home") + "/spec2006x86/O2_g3_out/solved_copy.txt";
+	public static String outPath = System.getProperty("user.home") + "/spec2006x86/O2_g3_out/solved_copy.jsonl";
 	public static String decompiledPath = System.getProperty("user.home") + "/spec2006x86/decompiled/";
 	public static String memAccessPath = System.getProperty("user.home") + "/spec2006x86/O2_g3_out/mem_access.txt";
 	public static HashSet<Function> targetFuncSuperSet = new HashSet<Function>();
@@ -602,8 +602,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 //				System.err.print("Vul found at offset " + pcodeOp.getSeqnum().getTarget().toString());
 
 			// this address could be resolved within current function
-			int count = 0;
-			String fpstr = "";
+			List<Function> targets = new ArrayList<>();
 			HashSet<Address> addrs = new HashSet<Address>();
 			addrs.addAll(func.getPossiblePointers());
 			for (Address funcAddr : addrs) {
@@ -615,8 +614,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 				fp = this.currentProgram.getFunctionManager().getFunctionAt(funcAddr);
 
 				if (fp != null) {
-					count += 1;
-					fpstr += fp.getName() + ", ";
+					targets.add(fp);
 					Instruction instr = currentProgram.getListing().getInstructionAt(pcodeOp.getSeqnum().getTarget());
 					if (instr == null)
 						continue;
@@ -655,7 +653,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 					try {
 						outf = new BufferedWriter(new OutputStreamWriter(
 								new FileOutputStream(IndirectCallTargetResolving.outPath, true)));
-						outf.write(csite.toString() + "@" + String.valueOf(count) + "@" + fpstr);
+						outf.write(JsonUtils.getResolvedCallTargetEntry(csite, targets).toJSONString());
 						outf.newLine();
 						outf.close();
 					} catch (Exception e) {

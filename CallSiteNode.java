@@ -81,6 +81,10 @@ public class CallSiteNode extends DSNode implements Comparable{
 		return tokens;
 	}
 
+	public String getFuncName() {
+		return funcName;
+	}
+
 	public void update(Cell returnCell, Cell func, ArrayList<Cell> args) {
 		if (this.members.get(0) != returnCell) {
 			this.members.put(0, returnCell);

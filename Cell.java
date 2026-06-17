@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataType;
@@ -453,14 +454,14 @@ public class Cell {
 //							for (Reference r : instr.getOperandReferences(0)) {
 //								existingTargets.add(r.getToAddress());
 //							}
-							String fpstr = "";
+							List<Function> targets = new ArrayList<>();
 							for (Address address : fps) {
 								if (!existingTargets.contains(address)) {
 									resolvedNew = true;
 									int as = currProg.getAddressFactory().getAddressSpace("ram").getSpaceID();
 									address = currProg.getAddressFactory().getAddress(as, address.getOffset());
 									Function fp = currProg.getFunctionManager().getFunctionAt(address);
-									fpstr += fp.getName() + ", ";
+									targets.add(fp);
 									instr.addOperandReference(0, address, RefType.COMPUTED_CALL,
 											SourceType.USER_DEFINED);
 								}
@@ -473,7 +474,7 @@ public class Cell {
 								try {
 									out = new BufferedWriter(new OutputStreamWriter(
 											new FileOutputStream(IndirectCallTargetResolving.outPath, true)));
-									out.write(csn.toString() + "@" + String.valueOf(fps.size()) + "@" + fpstr);
+									out.write(JsonUtils.getResolvedCallTargetEntry(csn, targets).toJSONString());
 									out.newLine();
 									out.close();
 								} catch (Exception e) {
@@ -513,14 +514,14 @@ public class Cell {
 //								for (Reference r : instr.getOperandReferences(0)) {
 //									existingTargets.add(r.getToAddress());
 //								}
-								String fpstr = "";
+								List<Function> targets = new ArrayList<>();
 								for (Address address : fps2) {
 									if (!existingTargets.contains(address)) {
 										resolvedNew = true;
 										int as = currProg.getAddressFactory().getAddressSpace("ram").getSpaceID();
 										address = currProg.getAddressFactory().getAddress(as, address.getOffset());
 										Function fp = currProg.getFunctionManager().getFunctionAt(address);
-										fpstr += fp.getName() + ", ";
+										targets.add(fp);
 										instr.addOperandReference(0, address, RefType.COMPUTED_CALL,
 												SourceType.USER_DEFINED);
 									}
@@ -532,7 +533,7 @@ public class Cell {
 									try {
 										out = new BufferedWriter(new OutputStreamWriter(
 												new FileOutputStream(IndirectCallTargetResolving.outPath, true)));
-										out.write(csn.toString() + "@" + String.valueOf(fps2.size()) + "@" + fpstr);
+										out.write(JsonUtils.getResolvedCallTargetEntry(csn, targets).toJSONString());
 										out.newLine();
 										out.close();
 									} catch (Exception e) {
@@ -787,14 +788,14 @@ public class Cell {
 				if (s == "func" && f != null && csn.isIndirect) {
 					if (fps.size() > 0 && fps.size() < 200) {
 						Instruction instr = currProg.getListing().getInstructionAt(csn.getLoc());
-						String fpstr = "";
+						List<Function> targets = new ArrayList<>();
 						if (instr != null) {
 							for (Address address : fps) {
 								csn.getGraph().resolvedNewCallSite = true;
 								int as = currProg.getAddressFactory().getAddressSpace("ram").getSpaceID();
 								address = currProg.getAddressFactory().getAddress(as, address.getOffset());
 								Function func = currProg.getFunctionManager().getFunctionAt(address);
-								fpstr += func.getName() + ", ";
+								targets.add(func);
 								instr.addOperandReference(0, address, RefType.COMPUTED_CALL, SourceType.USER_DEFINED);
 							}
 						}
@@ -804,7 +805,7 @@ public class Cell {
 						try {
 							out = new BufferedWriter(new OutputStreamWriter(
 									new FileOutputStream(IndirectCallTargetResolving.outPath, true)));
-							out.write(csn.toString() + "@" + String.valueOf(fps.size()) + "@" + fpstr);
+							out.write(JsonUtils.getResolvedCallTargetEntry(csn, targets).toJSONString());
 							out.newLine();
 							out.close();
 						} catch (Exception e) {
