@@ -649,7 +649,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 					e.printStackTrace();
 				}
 
-				if (count > 0) {
+				if (!targets.isEmpty()) {
 					try {
 						outf = new BufferedWriter(new OutputStreamWriter(
 								new FileOutputStream(IndirectCallTargetResolving.outPath, true)));
