@@ -2,10 +2,13 @@ import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.TreeSet;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataType;
@@ -361,6 +364,7 @@ public class Cell {
 
 		ArrayList<Integer> keyset = new ArrayList<Integer>();
 		keyset.addAll(parent1.getMembers().keySet());
+		Collections.sort(keyset);
 		Graph g = this.getGraph();
 		Graph mergedCellG = parent1.g;
 //		if (mergedCellG instanceof GlobalRegion) {
@@ -578,7 +582,14 @@ public class Cell {
 					parent2.g = mergedCellG;
 			}
 
-			for (Function key : mergedCell.getStackLocs().keySet()) {
+			TreeSet<Function> sortedStackKeys = new TreeSet<>(new Comparator<Function>() {
+				@Override
+				public int compare(Function a, Function b) {
+					return a.getEntryPoint().compareTo(b.getEntryPoint());
+				}
+			});
+			sortedStackKeys.addAll(mergedCell.getStackLocs().keySet());
+			for (Function key : sortedStackKeys) {
 				HashSet<Integer> stackLocSet = new HashSet<Integer>();
 				stackLocSet.addAll(mergedCell.getStackLocs(key));
 				if (stackLocSet.size() > 0) {
@@ -591,7 +602,9 @@ public class Cell {
 				}
 			}
 
-			for (Function key : mergedCell.getRSPOffset().keySet()) {
+			TreeSet<Function> sortedRspKeys = new TreeSet<>(sortedStackKeys.comparator());
+			sortedRspKeys.addAll(mergedCell.getRSPOffset().keySet());
+			for (Function key : sortedRspKeys) {
 				if (mergedCell.isRSP(key)) {
 					int offset = mergedCell.getRSPOffset(key);
 					mergedCell.setRSPOffset(key, null);

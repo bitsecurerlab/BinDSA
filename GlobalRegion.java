@@ -5,6 +5,7 @@ import java.io.OutputStreamWriter;
 import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.TreeSet;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.Array;
@@ -52,7 +53,8 @@ public class GlobalRegion extends Graph{
 		try {
 			out = new BufferedWriter(
 					new OutputStreamWriter(new FileOutputStream(GlobalRegion.dumpPath)));
-			for (Address addr : regionPtrMap.keySet()) {
+			TreeSet<Address> sortedAddrs = new TreeSet<>(regionPtrMap.keySet());
+			for (Address addr : sortedAddrs) {
 				int size = regionSize.get(addr);
 				out.write(Long.toHexString(addr.getOffset()) + ", " + Integer.toString(size));
 				out.newLine();

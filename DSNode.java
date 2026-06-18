@@ -1,8 +1,11 @@
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.ArrayDataType;
@@ -18,6 +21,14 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.pcode.Varnode;
 
 public class DSNode {
+	private static java.util.Comparator<Address> ADDR_ASC = Address::compareTo;
+
+	private static Iterable<CallSiteNode> sortedCallSiteNodes(HashMap<Address, CallSiteNode> map) {
+		TreeMap<Address, CallSiteNode> sorted = new TreeMap<>(ADDR_ASC);
+		sorted.putAll(map);
+		return sorted.values();
+	}
+
 	private int size;
 	private String name;
 	protected HashMap<Integer, Cell> members;
@@ -392,20 +403,22 @@ public class DSNode {
 		HashSet<Integer> allcell = new HashSet<Integer>();
 		HashSet<Address> possiblePointers = new HashSet<Address>();
 		allcell.addAll(this.getMembers().keySet());
+		ArrayList<Integer> allcellSorted = new ArrayList<>(allcell);
+		Collections.sort(allcellSorted);
 		Cell minCell = this.getMembers().get(0);
 		if (minCell == null) {
 			minCell = new Cell(this, 0);
 		}
 		Cell e = minCell.getOutEdges();
 
-		for (Integer cell : allcell) {
+		for (Integer cell : allcellSorted) {
 			if (this.getMembers().get(cell) != null) {
 				possiblePointers.addAll(this.getMembers().get(cell).getPossiblePointersWithLoading(visited));
 			}
 		}
 		minCell.addAllPointers(possiblePointers);
 
-		for (Integer cell : allcell) {
+		for (Integer cell : allcellSorted) {
 			if (cell == 0)
 				continue;
 			Cell thiscell = this.getMembers().get(cell);
@@ -515,7 +528,14 @@ public class DSNode {
 					minCell.setRSPOffset(f, offset);
 				}
 
-				for (Function key : thiscell.getStackLocs().keySet()) {
+				TreeSet<Function> sortedFKeys = new TreeSet<>(new Comparator<Function>() {
+					@Override
+					public int compare(Function a, Function b) {
+						return a.getEntryPoint().compareTo(b.getEntryPoint());
+					}
+				});
+				sortedFKeys.addAll(thiscell.getStackLocs().keySet());
+				for (Function key : sortedFKeys) {
 					HashSet<Integer> stackLocSet = new HashSet<Integer>();
 					stackLocSet.addAll(thiscell.getStackLocs(key));
 					if (stackLocSet.size() > 0) {
@@ -528,7 +548,9 @@ public class DSNode {
 					}
 				}
 
-				for (Function key : thiscell.getRSPOffset().keySet()) {
+				TreeSet<Function> sortedRspKeys = new TreeSet<>(sortedFKeys.comparator());
+				sortedRspKeys.addAll(thiscell.getRSPOffset().keySet());
+				for (Function key : sortedRspKeys) {
 					if (thiscell.isRSP(key)) {
 						int offset = thiscell.getRSPOffset(key);
 						thiscell.setRSPOffset(key, null);
@@ -570,8 +592,9 @@ public class DSNode {
 	
 	public DSNode clone(Graph newg) {
 		DSNode newDS = new DSNode(this.size, this.loc, newg);
-		HashSet<Integer> keyset = new HashSet<Integer>();
+		ArrayList<Integer> keyset = new ArrayList<Integer>();
 		keyset.addAll(this.members.keySet());
+		Collections.sort(keyset);
 		for (int i : keyset) {
 			Cell thisCell = this.members.get(i);
 			Cell copiedCell = new Cell(newDS, thisCell.getFieldOffset());
@@ -611,14 +634,15 @@ public class DSNode {
 			newDS = this.clone(newG);
 			isomorphism.put(this, newDS);
 
-			HashSet<CallSiteNode> csnodeset = new HashSet<CallSiteNode>();
-			for (CallSiteNode csn : this.getGraph().getCallNodes().values()) {
+			TreeSet<CallSiteNode> csnodeset = new TreeSet<CallSiteNode>();
+			for (CallSiteNode csn : sortedCallSiteNodes(this.getGraph().getCallNodes())) {
 				if (!csn.getResolved())
 					csnodeset.add(csn);
 			}
 
-			HashSet<Integer> indexes = new HashSet<Integer>();
+			ArrayList<Integer> indexes = new ArrayList<Integer>();
 			indexes.addAll(this.members.keySet());
+			Collections.sort(indexes);
 			for (int i : indexes) {
 				Cell c = this.members.get(i);
 				Cell newc = newDS.getMembers().get(i);

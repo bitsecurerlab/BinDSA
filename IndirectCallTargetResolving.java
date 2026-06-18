@@ -8,15 +8,18 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import org.json.simple.JSONArray;
@@ -73,15 +76,24 @@ import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
 
 public class IndirectCallTargetResolving extends GhidraScript {
+	private static final Comparator<Function> FUNC_BY_ENTRY = (a, b) -> a.getEntryPoint().compareTo(b.getEntryPoint());
+	private static final Comparator<Address> ADDR_ASC = Address::compareTo;
+
+	private static <T> Iterable<T> sortedByKey(HashMap<Address, T> map) {
+		TreeMap<Address, T> sorted = new TreeMap<>(ADDR_ASC);
+		sorted.putAll(map);
+		return sorted.values();
+	}
+
 	private int nextId = 0;
 	public static DecompInterface decomplib;
 	Address textBegin;
 	Address textEnd;
-	private HashMap<Function, Graph> allLocalGraphs = new HashMap<Function, Graph>();
-	private HashMap<Function, Graph> allBUGraphs = new HashMap<Function, Graph>();
+	private LinkedHashMap<Function, Graph> allLocalGraphs = new LinkedHashMap<Function, Graph>();
+	private LinkedHashMap<Function, Graph> allBUGraphs = new LinkedHashMap<Function, Graph>();
 	private GlobalRegion globalRegion;
-	private ArrayList<HashSet<Function>> sccs = new ArrayList<HashSet<Function>>();
-	private HashMap<Address, HashSet<Cell>> allMemAccessInstrMap = new HashMap<Address, HashSet<Cell>>();
+	private ArrayList<TreeSet<Function>> sccs = new ArrayList<TreeSet<Function>>();
+	private LinkedHashMap<Address, HashSet<Cell>> allMemAccessInstrMap = new LinkedHashMap<Address, HashSet<Cell>>();
 	public static int TOP = Integer.MAX_VALUE;
 
 	public HashSet<Address> indirectCallSiteAddrs = new HashSet<Address>();
@@ -192,7 +204,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 			}
 		}
 
-		for (Address addr : globalRegion.getGlobalPtr().keySet()) {
+		for (Address addr : new TreeMap<>(globalRegion.getGlobalPtr()).keySet()) {
 			Cell c = globalRegion.getGlobalPtr().get(addr);
 			DSNode obj = c.getParent();
 			if (dsnodeMap.containsKey(obj))
@@ -340,6 +352,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 		export(ccode, f);
 
 		ArrayList<PcodeBlockBasic> bb = hfunction.getBasicBlocks();
+		bb.sort(Comparator.comparing(PcodeBlockBasic::getStart));
 
 		if (bb.size() == 0)
 			return;
@@ -626,10 +639,12 @@ public class IndirectCallTargetResolving extends GhidraScript {
 
 			ret = graph.getCell(pcodeOp.getOutput());
 			oldCSite = graph.getCallNodes(pcodeOp.getSeqnum().getTarget());
+			CallSiteNode csite;
 			if (oldCSite != null) {
 				oldCSite.update(ret, func, callargs);
+				csite = oldCSite;
 			} else {
-				CallSiteNode csite = new CallSiteNode(ret, func, callargs, pcodeOp.getSeqnum().getTarget(), graph);
+				csite = new CallSiteNode(ret, func, callargs, pcodeOp.getSeqnum().getTarget(), graph);
 				csite.isIndirect = true;
 				csite.numIndirectCall = 1;
 				if (pcodeOp.getInput(0).getAddress().isMemoryAddress())
@@ -637,9 +652,8 @@ public class IndirectCallTargetResolving extends GhidraScript {
 				graph.addCallNodes(pcodeOp.getSeqnum().getTarget(), csite);
 				String tokens = graph.getMapping().get(pcodeOp).get(0).getLineParent().toString();
 				csite.setTokens(tokens);
-				BufferedWriter outf;
 				try {
-					outf = new BufferedWriter(
+					BufferedWriter outf = new BufferedWriter(
 							new OutputStreamWriter(new FileOutputStream(IndirectCallTargetResolving.targetPath, true)));
 					outf.write(pcodeOp.getSeqnum().getTarget().toString() + "@" + tokens);
 					outf.newLine();
@@ -648,18 +662,18 @@ public class IndirectCallTargetResolving extends GhidraScript {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
+			}
 
-				if (!targets.isEmpty()) {
-					try {
-						outf = new BufferedWriter(new OutputStreamWriter(
-								new FileOutputStream(IndirectCallTargetResolving.outPath, true)));
-						outf.write(JsonUtils.getResolvedCallTargetEntry(csite, targets).toJSONString());
-						outf.newLine();
-						outf.close();
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+			if (!targets.isEmpty()) {
+				try {
+					BufferedWriter outf = new BufferedWriter(new OutputStreamWriter(
+							new FileOutputStream(IndirectCallTargetResolving.outPath, true)));
+					outf.write(JsonUtils.getResolvedCallTargetEntry(csite, targets).toJSONString());
+					outf.newLine();
+					outf.close();
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
 			}
 
@@ -1018,7 +1032,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 		Address loc = cs.getLoc();
 	}
 
-	public void processSCC(HashSet<Function> scc, ArrayList<Function> stk, HashMap<Function, Integer> val,
+	public void processSCC(TreeSet<Function> scc, ArrayList<Function> stk, HashMap<Function, Integer> val,
 			HashMap<Function, Integer> low, HashMap<Function, Boolean> inStack) {
 		boolean newResolvedCallsite = false;
 		int count = 0;
@@ -1041,9 +1055,9 @@ public class IndirectCallTargetResolving extends GhidraScript {
 			if (g == null)
 				continue;
 			TreeSet<CallSiteNode> clonedcs = new TreeSet<CallSiteNode>();
-			for (CallSiteNode cs : g.getCallNodes().values()) {
+			for (CallSiteNode cs : sortedByKey(g.getCallNodes())) {
 				if (!cs.getResolved() && cs.getFunc() != null && cs.getFunc().getParent() != null) {
-					HashSet<Address> allAddr = new HashSet<Address>();
+					TreeSet<Address> allAddr = new TreeSet<Address>(ADDR_ASC);
 					allAddr.addAll(cs.getFunc().getPossiblePointers());
 					for (Address funcAddr : allAddr) {
 						if (!funcAddr.isMemoryAddress())
@@ -1058,7 +1072,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 				}
 			}
 			for (CallSiteNode cs : clonedcs) {
-				HashSet<Address> allAddr = new HashSet<Address>();
+				TreeSet<Address> allAddr = new TreeSet<Address>(ADDR_ASC);
 				allAddr.addAll(cs.getFunc().getPossiblePointers());
 				for (Address funcAddr : allAddr) {
 					if (!funcAddr.isMemoryAddress())
@@ -1101,14 +1115,14 @@ public class IndirectCallTargetResolving extends GhidraScript {
 			sccgraph.funcArgMap.put(f, null);
 		Map<DSNode, DSNode> isomorphism = new IdentityHashMap<DSNode, DSNode>();
 		ArrayList<CallSiteNode> allCallSite = new ArrayList<CallSiteNode>();
-		for (CallSiteNode cs : sccgraph.getCallNodes().values()) {
+		for (CallSiteNode cs : sortedByKey(sccgraph.getCallNodes())) {
 			if (!cs.getResolved() && cs.getFunc() != null && cs.getFunc().getParent() != null) {
 				allCallSite.add(cs);
 				DebugUtil.print("Intra-SCC, added " + cs.toString());
 			}
 		}
 
-		HashSet<Address> visitedCS = new HashSet<Address>();
+		TreeSet<Address> visitedCS = new TreeSet<Address>(ADDR_ASC);
 		while (allCallSite.size() > 0) {
 			CallSiteNode cs = allCallSite.remove(0);
 			if (visitedCS.contains(cs.getLoc())) {
@@ -1118,7 +1132,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 			visitedCS.add(cs.getLoc());
 			// start to merge at cs
 			if (cs.getFunc().getParent() != null) {
-				HashSet<Address> ptrs = new HashSet<Address>();
+				TreeSet<Address> ptrs = new TreeSet<Address>(ADDR_ASC);
 				for (Address funcAddr : cs.getFunc().getPossiblePointers()) {
 					if (!funcAddr.isMemoryAddress())
 						funcAddr = currentProgram.getAddressFactory().getAddress(
@@ -1138,7 +1152,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 						cs.setResolved(true);
 
 						// add the callee's unresolved callsite into queue
-						for (CallSiteNode cs2 : sccgraph.getCallNodes().values()) {
+						for (CallSiteNode cs2 : sortedByKey(sccgraph.getCallNodes())) {
 							if (!cs2.getResolved() && cs2.getFunc() != null && cs2.getFunc().getParent() != null) {
 								allCallSite.add(cs2);
 							}
@@ -1266,14 +1280,14 @@ public class IndirectCallTargetResolving extends GhidraScript {
 		stk.add(f);
 
 		Graph g = allBUGraphs.get(f);
-		Set<Function> callees = new HashSet<Function>();
+		TreeSet<Function> callees = new TreeSet<Function>(FUNC_BY_ENTRY);
 
 		if (g != null) {
 			DebugUtil.print("# of getCallNodes: " + String.valueOf(g.getCallNodes().values().size()));
-			for (CallSiteNode cs : g.getCallNodes().values()) {
+			for (CallSiteNode cs : sortedByKey(g.getCallNodes())) {
 				DebugUtil.print(cs.toString());
 				if (cs.getFunc() != null && cs.getFunc().getParent() != null) {
-					HashSet<Address> allAddr = new HashSet<Address>();
+					TreeSet<Address> allAddr = new TreeSet<Address>(ADDR_ASC);
 					allAddr.addAll(cs.getFunc().getPossiblePointers());
 					DebugUtil.print(allAddr.toString());
 					for (Address funcAddr : allAddr) {
@@ -1304,7 +1318,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 		}
 
 		if (low.get(f).intValue() == val.get(f).intValue()) {
-			HashSet<Function> scc = new HashSet<Function>();
+			TreeSet<Function> scc = new TreeSet<Function>(FUNC_BY_ENTRY);
 			while (true) {
 				Function sccfunc = stk.remove(stk.size() - 1);
 				scc.add(sccfunc);
@@ -1361,7 +1375,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 		// Collect unique indirect callsites by address across all bottom-up graphs.
 		// (The same CALLIND address can appear in multiple graphs if a function is part
 		// of an SCC; dedup by loc keeps only one representative per instruction.)
-		HashMap<Address, CallSiteNode> allIndirectCS = new HashMap<>();
+		TreeMap<Address, CallSiteNode> allIndirectCS = new TreeMap<>(ADDR_ASC);
 		for (Graph g : allBUGraphs.values()) {
 			if (g == null || g.getCallNodes() == null) continue;
 			for (Map.Entry<Address, CallSiteNode> e : g.getCallNodes().entrySet()) {
@@ -1497,6 +1511,7 @@ public class IndirectCallTargetResolving extends GhidraScript {
 			funcList.add(func);
 		}
 		out.close();
+		funcList.sort(FUNC_BY_ENTRY);
 
 		splitStructArg(funcList); // avoid the PIECE pcode
 		for (Function func : funcList) {

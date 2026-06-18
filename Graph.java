@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import ghidra.app.decompiler.ClangToken;
 import ghidra.program.model.address.Address;
@@ -470,7 +471,8 @@ public class Graph {
 			formalArgCell.merge(actualArgCell);
 		}
 
-		for (Address addr : this.callNodesTemp.keySet()) {
+		TreeSet<Address> sortedAddrs = new TreeSet<>(this.callNodesTemp.keySet());
+		for (Address addr : sortedAddrs) {
 			Iterator<CallSiteNode> iter = this.callNodesTemp.get(addr).iterator();
 			if (!callNodes.containsKey(addr)) {
 				callNodes.put(addr, iter.next());
