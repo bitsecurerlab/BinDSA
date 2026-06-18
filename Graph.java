@@ -225,16 +225,30 @@ public class Graph {
 
 			} else if (varBase.getAddress().isMemoryAddress() && globalRegion.findPtr(varBase.getAddress()) != null) {
 				baseCell = globalRegion.getGlobalMem(varBase.getAddress());
-				baseNode = baseCell.getParent();
-				int baseField = baseCell.getFieldOffset();
-				if (baseNode.isCollapsed() || baseField == IndirectCallTargetResolving.TOP
-						|| offset == IndirectCallTargetResolving.TOP) {
-					Ev.put((VarnodeAST) var, baseNode.getOrCreateCell(0));
-				} else if (baseNode.isArray() && baseNode.getPossibleStride() != null)
-					Ev.put((VarnodeAST) var,
-							baseNode.getOrCreateCell(IndirectCallTargetResolving.mod((offset + baseField), baseNode.getPossibleStride())));
-				else
-					Ev.put((VarnodeAST) var, baseNode.getOrCreateCell(offset + baseField));
+				if (baseCell != null && baseCell.getParent() != null) {
+					baseNode = baseCell.getParent();
+					int baseField = baseCell.getFieldOffset();
+					if (baseNode.isCollapsed() || baseField == IndirectCallTargetResolving.TOP
+							|| offset == IndirectCallTargetResolving.TOP) {
+						Ev.put((VarnodeAST) var, baseNode.getOrCreateCell(0));
+					} else if (baseNode.isArray() && baseNode.getPossibleStride() != null)
+						Ev.put((VarnodeAST) var,
+								baseNode.getOrCreateCell(IndirectCallTargetResolving.mod((offset + baseField), baseNode.getPossibleStride())));
+					else
+						Ev.put((VarnodeAST) var, baseNode.getOrCreateCell(offset + baseField));
+				} else {
+					// Orphaned cell: findPtr matched an entry in regionPtrMap,
+					// but getGlobalMem returned a Cell whose parent DSNode was
+					// deleted during a prior merge (see Cell.mergeContent).
+					// Create a fresh DSNode for varBase instead of dereferencing
+					// the null parent.
+					baseNode = new DSNode(varBase.getPCAddress(), this);
+					if (varBase.isConstant())
+						baseNode.addConstants((int) varBase.getOffset());
+					baseCell = new Cell(baseNode, 0);
+					Ev.put((VarnodeAST) varBase, baseCell);
+					Ev.put((VarnodeAST) var, baseCell);
+				}
 			} else {
 				// need to create new node for baseNode
 				baseNode = new DSNode(varBase.getPCAddress(), this);
