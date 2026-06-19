@@ -446,6 +446,8 @@ public class IndirectCallTargetResolving extends GhidraScript {
 	}
 
 	public static int mod(int a, int b) {
+		if (b == 0)
+			return a;
 		return (a % b + b) % b;
 	}
 
