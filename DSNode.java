@@ -461,9 +461,10 @@ public class DSNode {
 					if (inEdge.getParent().isCollapsed()) {
 						thiscell.removeInEdges(inEdge);
 						inEdge.removeOutEdges();
-						if (inEdge.getParent().get(0) == null)
-							System.out.println("debug here");
-						inEdge.getParent().get(0).setOutEdges(minCell);
+						Cell collapsedCell = inEdge.getParent().get(0);
+						if (collapsedCell == null)
+							continue;
+						collapsedCell.setOutEdges(minCell);
 					} else
 						inEdge.setOutEdges(minCell);
 				}
